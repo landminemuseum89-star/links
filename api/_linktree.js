@@ -121,7 +121,16 @@ async function getVisits() {
   }));
 }
 
-function parseVisitor(req) {
+function decodeHeader(value) {
+  if (!value) return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseVisitor(req, fallback = {}) {
   const userAgent = req.headers['user-agent'] || '';
   const language = req.headers['accept-language'] || '';
 
@@ -148,6 +157,11 @@ function parseVisitor(req) {
     browser,
     os,
     device,
+    country: req.headers['x-vercel-ip-country'] || fallback.country || '',
+    region: req.headers['x-vercel-ip-country-region'] || fallback.region || '',
+    city: decodeHeader(req.headers['x-vercel-ip-city']) || fallback.city || '',
+    timezone: req.headers['x-vercel-ip-timezone'] || fallback.timezone || '',
+    browser_region: fallback.browser_region || '',
     referrer: req.headers.referer || req.headers.referrer || '',
     user_agent: userAgent
   };

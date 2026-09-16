@@ -331,6 +331,11 @@ function getLinktreeDb() {
       browser TEXT,
       os TEXT,
       device TEXT,
+      country TEXT,
+      region TEXT,
+      city TEXT,
+      timezone TEXT,
+      browser_region TEXT,
       referrer TEXT,
       user_agent TEXT,
       FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
@@ -349,6 +354,20 @@ function getLinktreeDb() {
       FOREIGN KEY (link_id) REFERENCES links(id) ON DELETE SET NULL
     );
   `);
+
+  [
+    ['country', 'TEXT'],
+    ['region', 'TEXT'],
+    ['city', 'TEXT'],
+    ['timezone', 'TEXT'],
+    ['browser_region', 'TEXT']
+  ].forEach(([column, type]) => {
+    try {
+      linktreeDb.exec(`ALTER TABLE visits ADD COLUMN ${column} ${type}`);
+    } catch {
+      // Column already exists in the local SQLite database.
+    }
+  });
 
   const now = new Date().toISOString();
   const profile = linktreeDb.prepare('SELECT id FROM profile WHERE id = 1').get();
@@ -471,7 +490,7 @@ function getVisits(db) {
   `).all();
 }
 
-function parseVisitor(req) {
+function parseVisitor(req, fallback = {}) {
   const userAgent = req.headers['user-agent'] || '';
   const language = req.headers['accept-language'] || '';
 
@@ -498,6 +517,11 @@ function parseVisitor(req) {
     browser,
     os,
     device,
+    country: fallback.country || '',
+    region: fallback.region || '',
+    city: fallback.city || '',
+    timezone: fallback.timezone || '',
+    browserRegion: fallback.browserRegion || '',
     referrer: req.headers.referer || '',
     userAgent
   };
@@ -555,10 +579,13 @@ function linktreePlugin() {
 
           if (code) {
             trackedOrganization = db.prepare('SELECT id, name, code FROM organizations WHERE code = ?').get(code) || null;
-            const visitor = parseVisitor(req);
+            const visitor = parseVisitor(req, {
+              timezone: requestUrl.searchParams.get('timezone') || '',
+              browserRegion: requestUrl.searchParams.get('browser_region') || ''
+            });
             db.prepare(`
-              INSERT INTO visits (organization_id, code, visited_at, language, browser, os, device, referrer, user_agent)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              INSERT INTO visits (organization_id, code, visited_at, language, browser, os, device, country, region, city, timezone, browser_region, referrer, user_agent)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
               trackedOrganization?.id || null,
               code,
@@ -567,6 +594,11 @@ function linktreePlugin() {
               visitor.browser,
               visitor.os,
               visitor.device,
+              visitor.country,
+              visitor.region,
+              visitor.city,
+              visitor.timezone,
+              visitor.browserRegion,
               visitor.referrer,
               visitor.userAgent
             );
@@ -687,6 +719,22 @@ function linktreePlugin() {
             visitor.userAgent
           );
 
+          sendJson(res, 200, { ok: true });
+        } catch (error) {
+          sendJson(res, 500, { error: error.message });
+        }
+      });
+
+      server.middlewares.use('/api/linktree/visit/delete', async (req, res) => {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' });
+          return;
+        }
+
+        try {
+          const body = await readRequestBody(req);
+          const db = getLinktreeDb();
+          db.prepare('DELETE FROM visits WHERE id = ?').run(Number(body.id));
           sendJson(res, 200, { ok: true });
         } catch (error) {
           sendJson(res, 500, { error: error.message });

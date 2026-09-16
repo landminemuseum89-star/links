@@ -38,6 +38,11 @@ create table if not exists public.visits (
   browser text,
   os text,
   device text,
+  country text,
+  region text,
+  city text,
+  timezone text,
+  browser_region text,
   referrer text,
   user_agent text
 );
@@ -57,6 +62,12 @@ create table if not exists public.link_clicks (
 create index if not exists visits_organization_id_idx on public.visits(organization_id);
 create index if not exists visits_code_idx on public.visits(code);
 create index if not exists link_clicks_link_id_idx on public.link_clicks(link_id);
+
+alter table public.visits add column if not exists country text;
+alter table public.visits add column if not exists region text;
+alter table public.visits add column if not exists city text;
+alter table public.visits add column if not exists timezone text;
+alter table public.visits add column if not exists browser_region text;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

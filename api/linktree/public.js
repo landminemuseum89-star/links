@@ -12,7 +12,10 @@ module.exports = async function handler(req, res) {
 
     if (code) {
       trackedOrganization = await selectSingle('organizations', `code=eq.${encodeURIComponent(code)}&select=id,name,code`);
-      const visitor = parseVisitor(req);
+      const visitor = parseVisitor(req, {
+        timezone: req.query?.timezone || '',
+        browser_region: req.query?.browser_region || ''
+      });
       await supabaseRequest('/rest/v1/visits', {
         method: 'POST',
         headers: { Prefer: 'return=minimal' },

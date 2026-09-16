@@ -77,6 +77,17 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function getBrowserRegion() {
+  const locale = navigator.language || navigator.languages?.[0] || '';
+  const region = locale.split('-')[1] || '';
+  return region.toUpperCase();
+}
+
+function formatLocation(visit) {
+  const place = [visit.city, visit.region, visit.country].filter(Boolean).join(', ');
+  return place || visit.timezone || visit.browser_region || '-';
+}
+
 function PublicPage() {
   const [state, setState] = useState({ loading: true, profile: null, links: [], trackedOrganization: null });
   const [error, setError] = useState('');
@@ -84,8 +95,13 @@ function PublicPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const variable = params.get('variable') || '';
+    const publicParams = new URLSearchParams();
 
-    api(`/api/linktree/public${variable ? `?variable=${encodeURIComponent(variable)}` : ''}`)
+    if (variable) publicParams.set('variable', variable);
+    publicParams.set('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+    publicParams.set('browser_region', getBrowserRegion());
+
+    api(`/api/linktree/public?${publicParams.toString()}`)
       .then((payload) => setState({ loading: false, ...payload }))
       .catch((err) => {
         setError(err.message);
@@ -643,6 +659,7 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
   const [selectedId, setSelectedId] = useState(null);
   const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState({ ...emptyOrganization, code: makeCode() });
+  const [deletingVisitId, setDeletingVisitId] = useState(null);
 
   const selected = organizations.find((org) => org.id === selectedId) || null;
   const selectedVisits = selected ? visits.filter((visit) => visit.organization_id === selected.id) : [];
@@ -685,6 +702,20 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
     });
     if (selectedId === id) setSelectedId(null);
     await onSaved();
+  };
+
+  const removeVisit = async (visitId) => {
+    if (!window.confirm('Delete this visit from the organization report?')) return;
+    setDeletingVisitId(visitId);
+    try {
+      await api('/api/linktree/visit/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id: visitId })
+      });
+      await onSaved();
+    } finally {
+      setDeletingVisitId(null);
+    }
   };
 
   const modalTitle = modalMode === 'edit' ? 'Edit organization' : 'Create new organization';
@@ -741,6 +772,8 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
                 <th>Browser</th>
                 <th>System</th>
                 <th>Device</th>
+                <th>Location</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -751,11 +784,18 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
                   <td>{visit.browser || '-'}</td>
                   <td>{visit.os || '-'}</td>
                   <td>{visit.device || '-'}</td>
+                  <td>{formatLocation(visit)}</td>
+                  <td>
+                    <button className="secondary-button compact danger" disabled={deletingVisitId === visit.id} onClick={() => removeVisit(visit.id)}>
+                      {deletingVisitId === visit.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
               {selectedVisits.length === 0 ? (
                 <tr>
-                  <td colSpan="5">No visits recorded for this code yet.</td>
+                  <td colSpan="7">No visits recorded for this code yet.</td>
                 </tr>
               ) : null}
             </tbody>
