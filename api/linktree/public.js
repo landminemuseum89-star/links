@@ -37,6 +37,8 @@ module.exports = async function handler(req, res) {
   try {
     const code = req.query?.variable || '';
     let trackedOrganization = null;
+    const profilePromise = getProfile();
+    const linksPromise = getLinks(true, { includeStats: false });
 
     if (code) {
       trackedOrganization = await selectSingle('organizations', `code=eq.${encodeURIComponent(code)}&select=id,name,code`);
@@ -56,7 +58,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    const [profile, links] = await Promise.all([getProfile(), getLinks(true)]);
+    const [profile, links] = await Promise.all([profilePromise, linksPromise]);
     res.status(200).json({ profile, links, trackedOrganization });
   } catch (error) {
     res.status(500).json({ error: error.message });

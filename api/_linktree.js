@@ -67,10 +67,16 @@ async function getProfile() {
   return selectSingle('profile', 'id=eq.1&select=*');
 }
 
-async function getLinks(activeOnly = false) {
+async function getLinks(activeOnly = false, options = {}) {
+  const { includeStats = true } = options;
   const links = await supabaseRequest(
     `/rest/v1/links?select=id,title,url,icon,position,is_active&order=position.asc,id.asc${activeOnly ? '&is_active=eq.true' : ''}`
   );
+
+  if (!includeStats) {
+    return links;
+  }
+
   const clicks = await supabaseRequest('/rest/v1/link_clicks?select=link_id,clicked_at');
   const stats = clicks.reduce((acc, click) => {
     if (!click.link_id) return acc;
@@ -90,9 +96,7 @@ async function getLinks(activeOnly = false) {
   }));
 }
 
-async function getOrganizations() {
-  const organizations = await supabaseRequest('/rest/v1/organizations?select=*&order=created_at.desc');
-  const visits = await supabaseRequest('/rest/v1/visits?select=organization_id,visited_at');
+function withOrganizationStats(organizations, visits) {
   const stats = visits.reduce((acc, visit) => {
     if (!visit.organization_id) return acc;
     const current = acc[visit.organization_id] || { visit_count: 0, last_visit_at: null };
@@ -111,14 +115,41 @@ async function getOrganizations() {
   }));
 }
 
-async function getVisits() {
-  const visits = await supabaseRequest('/rest/v1/visits?select=*&order=visited_at.desc&limit=500');
-  const organizations = await supabaseRequest('/rest/v1/organizations?select=id,name');
+async function getOrganizations(preloadedVisits = null) {
+  const organizations = await supabaseRequest('/rest/v1/organizations?select=*&order=created_at.desc');
+  const visits = preloadedVisits || await supabaseRequest('/rest/v1/visits?select=organization_id,visited_at');
+  return withOrganizationStats(organizations, visits);
+}
+
+function withVisitOrganizationNames(visits, organizations) {
   const names = Object.fromEntries(organizations.map((organization) => [organization.id, organization.name]));
   return visits.map((visit) => ({
     ...visit,
     organization_name: names[visit.organization_id] || null
   }));
+}
+
+async function getVisits(preloadedOrganizations = null) {
+  const visits = await supabaseRequest('/rest/v1/visits?select=*&order=visited_at.desc&limit=500');
+  const organizations = preloadedOrganizations || await supabaseRequest('/rest/v1/organizations?select=id,name');
+  return withVisitOrganizationNames(visits, organizations);
+}
+
+async function getAdminData() {
+  const [profile, links, organizations, visitStatsRows, visits] = await Promise.all([
+    getProfile(),
+    getLinks(false),
+    supabaseRequest('/rest/v1/organizations?select=*&order=created_at.desc'),
+    supabaseRequest('/rest/v1/visits?select=organization_id,visited_at'),
+    supabaseRequest('/rest/v1/visits?select=*&order=visited_at.desc&limit=500')
+  ]);
+
+  return {
+    profile,
+    links,
+    organizations: withOrganizationStats(organizations, visitStatsRows),
+    visits: withVisitOrganizationNames(visits, organizations)
+  };
 }
 
 function decodeHeader(value) {
@@ -208,6 +239,7 @@ module.exports = {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   SUPABASE_BUCKET,
+  getAdminData,
   getLinks,
   getOrganizations,
   getProfile,
