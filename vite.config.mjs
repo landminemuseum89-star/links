@@ -7,6 +7,7 @@ import path from 'node:path';
 import QRCode from 'qrcode';
 
 const require = createRequire(import.meta.url);
+const { addQrCodeLabel } = require('./api/_qrLabel.js');
 
 function resolveBrevoApiKey(value) {
   if (!value) return '';
@@ -871,7 +872,7 @@ function linktreePlugin() {
           }
 
           const targetUrl = `${origin}/?variable=${encodeURIComponent(code)}`;
-          const png = await QRCode.toBuffer(targetUrl, {
+          const qrPng = await QRCode.toBuffer(targetUrl, {
             type: 'png',
             width: 1080,
             margin: 2,
@@ -880,6 +881,7 @@ function linktreePlugin() {
               light: '#fffaf2'
             }
           });
+          const png = addQrCodeLabel(qrPng, code);
 
           res.statusCode = 200;
           res.setHeader('Content-Type', 'image/png');

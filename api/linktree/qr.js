@@ -1,5 +1,6 @@
 const QRCode = require('qrcode');
 const { getRequestOrigin, sendMethodNotAllowed } = require('../_linktree');
+const { addQrCodeLabel } = require('../_qrLabel');
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -17,7 +18,7 @@ module.exports = async function handler(req, res) {
     }
 
     const targetUrl = `${origin}/?variable=${encodeURIComponent(code)}`;
-    const png = await QRCode.toBuffer(targetUrl, {
+    const qrPng = await QRCode.toBuffer(targetUrl, {
       type: 'png',
       width: 1080,
       margin: 2,
@@ -26,6 +27,7 @@ module.exports = async function handler(req, res) {
         light: '#fffaf2'
       }
     });
+    const png = addQrCodeLabel(qrPng, code);
 
     res.statusCode = 200;
     res.setHeader('Content-Type', 'image/png');
