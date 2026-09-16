@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   BarChart3,
   Camera,
   Download,
@@ -420,8 +422,17 @@ function ProfileEditor({ profile, onSaved }) {
 }
 
 function LinksEditor({ links, onSaved }) {
+  const [items, setItems] = useState(links);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyLink);
+  const [draggedId, setDraggedId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [actionId, setActionId] = useState(null);
+
+  useEffect(() => {
+    setItems(links);
+  }, [links]);
 
   const startEdit = (link) => {
     setEditing(link.id);
@@ -435,38 +446,110 @@ function LinksEditor({ links, onSaved }) {
 
   const save = async (event) => {
     event.preventDefault();
+    setSaving(true);
     const payload = {
       ...form,
       url: normalizeUrl(form.url),
       is_active: Boolean(form.is_active)
     };
 
-    await api('/api/linktree/link', {
-      method: editing ? 'PUT' : 'POST',
-      body: JSON.stringify(editing ? { ...payload, id: editing } : payload)
-    });
-    reset();
-    await onSaved();
+    try {
+      await api('/api/linktree/link', {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(editing ? { ...payload, id: editing } : payload)
+      });
+      reset();
+      await onSaved();
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id) => {
     if (!window.confirm('Delete this button permanently? Its statistics will no longer appear in the panel.')) return;
-    await api('/api/linktree/link/delete', {
-      method: 'POST',
-      body: JSON.stringify({ id })
-    });
-    await onSaved();
+    setActionId(id);
+    try {
+      await api('/api/linktree/link/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id })
+      });
+      await onSaved();
+    } finally {
+      setActionId(null);
+    }
   };
 
   const toggleVisibility = async (link) => {
-    await api('/api/linktree/link', {
-      method: 'PUT',
-      body: JSON.stringify({
-        ...link,
-        is_active: !Boolean(link.is_active)
-      })
+    setActionId(link.id);
+    try {
+      await api('/api/linktree/link', {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...link,
+          is_active: !Boolean(link.is_active)
+        })
+      });
+      await onSaved();
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const saveOrder = async (orderedItems) => {
+    setOrderSaving(true);
+    try {
+      await Promise.all(
+        orderedItems.map((link, index) =>
+          api('/api/linktree/link', {
+            method: 'PUT',
+            body: JSON.stringify({
+              ...link,
+              position: index + 1,
+              is_active: Boolean(link.is_active)
+            })
+          })
+        )
+      );
+      await onSaved();
+    } finally {
+      setOrderSaving(false);
+    }
+  };
+
+  const moveItem = (fromIndex, toIndex, shouldPersist = true) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || toIndex >= items.length) return items;
+    const nextItems = [...items];
+    const [moved] = nextItems.splice(fromIndex, 1);
+    nextItems.splice(toIndex, 0, moved);
+    setItems(nextItems);
+    if (shouldPersist) saveOrder(nextItems);
+    return nextItems;
+  };
+
+  const moveByButton = (index, direction) => {
+    moveItem(index, index + direction);
+  };
+
+  const handleDragOver = (event, targetId) => {
+    event.preventDefault();
+    if (!draggedId || draggedId === targetId) return;
+    setItems((current) => {
+      const fromIndex = current.findIndex((link) => link.id === draggedId);
+      const toIndex = current.findIndex((link) => link.id === targetId);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return current;
+      const nextItems = [...current];
+      const [moved] = nextItems.splice(fromIndex, 1);
+      nextItems.splice(toIndex, 0, moved);
+      return nextItems;
     });
-    await onSaved();
+  };
+
+  const handleDrop = async (event) => {
+    event.preventDefault();
+    if (!draggedId) return;
+    const orderedItems = [...items];
+    setDraggedId(null);
+    await saveOrder(orderedItems);
   };
 
   return (
@@ -474,27 +557,46 @@ function LinksEditor({ links, onSaved }) {
       <section className="admin-card">
         <div className="section-title">
           <h3>All buttons</h3>
-          <span>{links.length} configured</span>
+          <span>{orderSaving ? 'Saving order...' : `${links.length} configured`}</span>
         </div>
         <div className="item-list">
-          {links.map((link) => (
-            <article className="list-item" key={link.id}>
-              <GripVertical size={18} aria-hidden="true" />
+          {items.map((link, index) => (
+            <article
+              className={draggedId === link.id ? 'list-item dragging' : 'list-item'}
+              draggable
+              key={link.id}
+              onDragEnd={() => setDraggedId(null)}
+              onDragOver={(event) => handleDragOver(event, link.id)}
+              onDragStart={() => setDraggedId(link.id)}
+              onDrop={handleDrop}
+            >
+              <span className="drag-handle" title="Drag to reorder">
+                <GripVertical size={18} aria-hidden="true" />
+              </span>
               <div>
                 <strong>{link.title}</strong>
                 <span>{link.url}</span>
               </div>
               <span className="click-count">{Number(link.click_count || 0)} clicks</span>
               <span className={link.is_active ? 'status active' : 'status'}>{link.is_active ? 'Visible' : 'Hidden'}</span>
-              <button className="secondary-button compact" onClick={() => toggleVisibility(link)}>
+              <div className="order-controls" aria-label={`Reorder ${link.title}`}>
+                <button className="icon-button small" disabled={index === 0 || orderSaving} onClick={() => moveByButton(index, -1)} aria-label={`Move ${link.title} up`}>
+                  <ArrowUp size={15} aria-hidden="true" />
+                </button>
+                <button className="icon-button small" disabled={index === items.length - 1 || orderSaving} onClick={() => moveByButton(index, 1)} aria-label={`Move ${link.title} down`}>
+                  <ArrowDown size={15} aria-hidden="true" />
+                </button>
+              </div>
+              <button className="secondary-button compact" disabled={actionId === link.id} onClick={() => toggleVisibility(link)}>
+                {actionId === link.id ? <span className="spinner" aria-hidden="true" /> : null}
                 {link.is_active ? 'Hide' : 'Show'}
               </button>
-              <button className="secondary-button compact" onClick={() => startEdit(link)} aria-label={`Edit ${link.title}`}>
+              <button className="secondary-button compact" disabled={actionId === link.id || orderSaving} onClick={() => startEdit(link)} aria-label={`Edit ${link.title}`}>
                 <Edit3 size={18} aria-hidden="true" />
                 Edit
               </button>
-              <button className="secondary-button compact danger" onClick={() => remove(link.id)} aria-label={`Delete ${link.title}`}>
-                <Trash2 size={18} aria-hidden="true" />
+              <button className="secondary-button compact danger" disabled={actionId === link.id} onClick={() => remove(link.id)} aria-label={`Delete ${link.title}`}>
+                {actionId === link.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={18} aria-hidden="true" />}
                 Delete
               </button>
             </article>
@@ -528,9 +630,9 @@ function LinksEditor({ links, onSaved }) {
           />
           Show on public page. Hidden buttons keep their click history.
         </label>
-        <button className="primary-button" type="submit">
-          <Plus size={18} aria-hidden="true" />
-          {editing ? 'Save changes' : 'Add button'}
+        <button className="primary-button" disabled={saving} type="submit">
+          {saving ? <span className="spinner light" aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
+          {saving ? 'Saving...' : editing ? 'Save changes' : 'Add button'}
         </button>
       </form>
     </div>

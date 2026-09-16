@@ -34,16 +34,23 @@ module.exports = async function handler(req, res) {
         })
       });
     } else {
+      const nextPosition = Number.isFinite(Number(body.position)) ? Number(body.position) : undefined;
+      const updatePayload = {
+        title,
+        url,
+        icon: body.icon || 'globe',
+        is_active: Boolean(body.is_active),
+        updated_at: now
+      };
+
+      if (nextPosition) {
+        updatePayload.position = nextPosition;
+      }
+
       await supabaseRequest(`/rest/v1/links?id=eq.${Number(body.id)}`, {
         method: 'PATCH',
         headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify({
-          title,
-          url,
-          icon: body.icon || 'globe',
-          is_active: Boolean(body.is_active),
-          updated_at: now
-        })
+        body: JSON.stringify(updatePayload)
       });
     }
 

@@ -347,6 +347,13 @@ textarea {
   padding: 0 16px;
 }
 
+.primary-button:disabled,
+.secondary-button:disabled,
+.icon-button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .secondary-button {
   background: #f4f0e9;
   border: 1px solid var(--line);
@@ -378,6 +385,12 @@ textarea {
   color: var(--ink);
   height: 38px;
   width: 38px;
+}
+
+.icon-button.small {
+  height: 32px;
+  min-height: 32px;
+  width: 32px;
 }
 
 .admin-shell {
@@ -686,8 +699,38 @@ textarea {
   border-radius: 8px;
   display: grid;
   gap: 10px;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto auto auto auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto auto auto auto auto;
   padding: 12px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+.list-item.dragging {
+  border-color: var(--ink);
+  box-shadow: 0 16px 28px rgba(18, 18, 18, 0.14);
+  opacity: 0.72;
+  transform: scale(0.995);
+}
+
+.drag-handle {
+  align-items: center;
+  background: #eee8dc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: grab;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 34px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.order-controls {
+  display: inline-flex;
+  gap: 4px;
 }
 
 .list-item strong,
@@ -725,6 +768,27 @@ textarea {
   font-weight: 900;
   padding: 6px 9px;
   white-space: nowrap;
+}
+
+.spinner {
+  animation: spin 800ms linear infinite;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+
+.spinner.light {
+  border-color: rgba(255, 255, 255, 0.45);
+  border-right-color: transparent;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .checkbox-row {
@@ -1018,12 +1082,23 @@ code {
   }
 
   .list-item > svg,
+  .list-item .drag-handle,
   .list-item .status,
   .list-item .click-count {
     display: none;
   }
 
-  .list-item .secondary-button {
+  .list-item .secondary-button,
+  .list-item .order-controls {
+    width: 100%;
+  }
+
+  .list-item .order-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .list-item .order-controls .icon-button {
     width: 100%;
   }
 

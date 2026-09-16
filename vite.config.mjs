@@ -734,11 +734,13 @@ function linktreePlugin() {
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `).run(title, url, body.icon || 'globe', nextPosition, body.is_active ? 1 : 0, now, now);
           } else {
+            const current = db.prepare('SELECT position FROM links WHERE id = ?').get(Number(body.id));
+            const nextPosition = Number.isFinite(Number(body.position)) ? Number(body.position) : current?.position || 0;
             db.prepare(`
               UPDATE links
-              SET title = ?, url = ?, icon = ?, is_active = ?, updated_at = ?
+              SET title = ?, url = ?, icon = ?, position = ?, is_active = ?, updated_at = ?
               WHERE id = ?
-            `).run(title, url, body.icon || 'globe', body.is_active ? 1 : 0, now, Number(body.id));
+            `).run(title, url, body.icon || 'globe', nextPosition, body.is_active ? 1 : 0, now, Number(body.id));
           }
 
           sendJson(res, 200, { ok: true, links: getLinks(db) });
