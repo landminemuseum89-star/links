@@ -18,6 +18,10 @@ const {
 const { addQrCodeLabel } = require('../_qrLabel');
 
 function getRoute(req) {
+  const queryPath = req.query?.path;
+  if (Array.isArray(queryPath)) return queryPath.join('/');
+  if (typeof queryPath === 'string' && queryPath) return queryPath;
+
   const pathname = new URL(req.url || '/', 'https://local.test').pathname;
   return pathname.replace(/^\/api\/linktree\/?/, '').replace(/\/$/, '') || 'public';
 }
@@ -272,11 +276,48 @@ async function handleDelete(req, res, table) {
   if (req.method !== 'POST') return sendMethodNotAllowed(res);
 
   const body = parseBody(req.body);
-  await supabaseRequest(`/rest/v1/${table}?id=eq.${Number(body.id)}`, {
+  const id = Number(body.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Missing item id' });
+    return;
+  }
+
+  await supabaseRequest(`/rest/v1/${table}?id=eq.${id}`, {
     method: 'DELETE',
     headers: { Prefer: 'return=minimal' }
   });
   res.status(200).json({ ok: true });
+}
+
+async function handleClickDelete(req, res) {
+  if (req.method !== 'POST') return sendMethodNotAllowed(res);
+
+  const body = parseBody(req.body);
+  const id = Number(body.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Missing click id' });
+    return;
+  }
+
+  await supabaseRequest(`/rest/v1/link_clicks?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' }
+  });
+
+  const [links, linkClicks] = await Promise.all([
+    getLinks(false),
+    supabaseRequest('/rest/v1/link_clicks?select=*&order=clicked_at.desc&limit=500')
+  ]);
+  const names = Object.fromEntries(links.map((link) => [link.id, link.title]));
+
+  res.status(200).json({
+    ok: true,
+    links,
+    linkClicks: linkClicks.map((click) => ({
+      ...click,
+      link_title: names[click.link_id] || null
+    }))
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -299,7 +340,7 @@ module.exports = async function handler(req, res) {
     if (route === 'profile-image') return await handleProfileImage(req, res);
     if (route === 'qr') return await handleQr(req, res);
     if (route === 'visit/delete') return await handleDelete(req, res, 'visits');
-    if (route === 'click/delete') return await handleDelete(req, res, 'link_clicks');
+    if (route === 'click/delete' || route === 'link-click-delete') return await handleClickDelete(req, res);
 
     res.status(404).json({ error: 'Endpoint not found' });
   } catch (error) {

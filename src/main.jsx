@@ -601,12 +601,12 @@ function LinksEditor({ links, clicks = [], onSaved }) {
     if (!window.confirm('Delete this click from the button report?')) return;
     setDeletingClickId(clickId);
     try {
-      await api('/api/linktree/click/delete', {
+      const payload = await api('/api/linktree/link-click-delete', {
         method: 'POST',
         body: JSON.stringify({ id: clickId })
       });
-      const nextClicks = clicks.filter((click) => click.id !== clickId);
-      const nextLinks = items.map((link) =>
+      const nextClicks = payload.linkClicks || clicks.filter((click) => click.id !== clickId);
+      const nextLinks = payload.links || items.map((link) =>
         link.id === selected?.id ? { ...link, click_count: Math.max(Number(link.click_count || 0) - 1, 0) } : link
       );
       setItems(nextLinks);

@@ -757,7 +757,7 @@ function linktreePlugin() {
         }
       });
 
-      server.middlewares.use('/api/linktree/click/delete', async (req, res) => {
+      const handleLocalClickDelete = async (req, res) => {
         if (req.method !== 'POST') {
           sendJson(res, 405, { error: 'Method not allowed' });
           return;
@@ -766,12 +766,25 @@ function linktreePlugin() {
         try {
           const body = await readRequestBody(req);
           const db = getLinktreeDb();
-          db.prepare('DELETE FROM link_clicks WHERE id = ?').run(Number(body.id));
-          sendJson(res, 200, { ok: true });
+          const id = Number(body.id);
+          if (!Number.isFinite(id) || id <= 0) {
+            sendJson(res, 400, { error: 'Missing click id' });
+            return;
+          }
+
+          db.prepare('DELETE FROM link_clicks WHERE id = ?').run(id);
+          sendJson(res, 200, {
+            ok: true,
+            links: getLinks(db),
+            linkClicks: getLinkClicks(db)
+          });
         } catch (error) {
           sendJson(res, 500, { error: error.message });
         }
-      });
+      };
+
+      server.middlewares.use('/api/linktree/click/delete', handleLocalClickDelete);
+      server.middlewares.use('/api/linktree/link-click-delete', handleLocalClickDelete);
 
       server.middlewares.use('/api/linktree/visit/delete', async (req, res) => {
         if (req.method !== 'POST') {
