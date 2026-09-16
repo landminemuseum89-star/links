@@ -63,9 +63,9 @@ img {
 .public-shell {
   align-items: center;
   background:
-    linear-gradient(140deg, rgba(19, 79, 53, 0.9), rgba(38, 48, 168, 0.86)),
-    radial-gradient(circle at 20% 12%, rgba(243, 201, 71, 0.8), transparent 26%),
-    #234538;
+    radial-gradient(circle at 78% 16%, rgba(246, 190, 55, 0.18), transparent 28%),
+    linear-gradient(115deg, rgba(4, 25, 58, 0.98), rgba(5, 29, 66, 0.96) 52%, rgba(2, 18, 43, 0.99)),
+    #051d42;
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -76,14 +76,14 @@ img {
 
 .public-shell::before {
   background:
-    linear-gradient(130deg, transparent 0 16%, rgba(255, 208, 227, 0.86) 16% 29%, transparent 29% 100%),
-    linear-gradient(35deg, transparent 0 52%, rgba(111, 180, 126, 0.82) 52% 67%, transparent 67% 100%),
-    linear-gradient(90deg, transparent 0 63%, rgba(4, 17, 18, 0.72) 63% 71%, transparent 71% 100%);
+    linear-gradient(130deg, transparent 0 15%, rgba(223, 2, 37, 0.84) 15% 17%, transparent 17% 100%),
+    linear-gradient(32deg, transparent 0 48%, rgba(246, 190, 55, 0.72) 48% 61%, transparent 61% 100%),
+    linear-gradient(90deg, transparent 0 70%, rgba(1, 10, 27, 0.58) 70% 78%, transparent 78% 100%);
   content: "";
   inset: -8%;
-  opacity: 0.82;
+  opacity: 0.56;
   position: absolute;
-  transform: rotate(-5deg) scale(1.06);
+  transform: rotate(-4deg) scale(1.06);
 }
 
 .linktree-card {
