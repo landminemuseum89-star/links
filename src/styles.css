@@ -676,6 +676,10 @@ textarea {
   padding: 14px;
 }
 
+.button-card-row {
+  grid-template-columns: 38px minmax(220px, 1fr) 100px auto auto minmax(360px, auto);
+}
+
 .organization-summary {
   display: grid;
   gap: 8px;
@@ -1169,6 +1173,10 @@ code {
   }
 
   .organization-card-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .button-card-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

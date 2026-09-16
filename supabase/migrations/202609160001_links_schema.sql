@@ -55,6 +55,11 @@ create table if not exists public.link_clicks (
   browser text,
   os text,
   device text,
+  country text,
+  region text,
+  city text,
+  timezone text,
+  browser_region text,
   referrer text,
   user_agent text
 );
@@ -68,6 +73,11 @@ alter table public.visits add column if not exists region text;
 alter table public.visits add column if not exists city text;
 alter table public.visits add column if not exists timezone text;
 alter table public.visits add column if not exists browser_region text;
+alter table public.link_clicks add column if not exists country text;
+alter table public.link_clicks add column if not exists region text;
+alter table public.link_clicks add column if not exists city text;
+alter table public.link_clicks add column if not exists timezone text;
+alter table public.link_clicks add column if not exists browser_region text;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (

@@ -130,7 +130,11 @@ function PublicPage() {
 
   const handlePublicLinkClick = (event, link) => {
     event.preventDefault();
-    const payload = JSON.stringify({ id: link.id });
+    const payload = JSON.stringify({
+      id: link.id,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      browser_region: getBrowserRegion()
+    });
 
     if (navigator.sendBeacon) {
       navigator.sendBeacon('/api/linktree/link-click', new Blob([payload], { type: 'application/json' }));
@@ -407,8 +411,9 @@ function Dashboard({ onLogout }) {
         {tab === 'links' ? (
           <LinksEditor
             links={data.links}
-            onSaved={(links) => {
-              patchData({ links });
+            clicks={data.linkClicks || []}
+            onSaved={(links, extraPatch = {}) => {
+              patchData({ links, ...extraPatch });
               flash('Buttons updated');
               syncLater();
             }}
@@ -521,26 +526,36 @@ function ProfileEditor({ profile, onSaved }) {
   );
 }
 
-function LinksEditor({ links, onSaved }) {
+function LinksEditor({ links, clicks = [], onSaved }) {
   const [items, setItems] = useState(links);
-  const [editing, setEditing] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState(emptyLink);
   const [draggedId, setDraggedId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const [actionId, setActionId] = useState(null);
+  const [deletingClickId, setDeletingClickId] = useState(null);
+
+  const selected = items.find((link) => link.id === selectedId) || null;
+  const selectedClicks = selected ? clicks.filter((click) => click.link_id === selected.id) : [];
 
   useEffect(() => {
     setItems(links);
   }, [links]);
 
+  const openCreate = () => {
+    setForm(emptyLink);
+    setModalMode('create');
+  };
+
   const startEdit = (link) => {
-    setEditing(link.id);
     setForm({ ...link, is_active: Boolean(link.is_active) });
+    setModalMode('edit');
   };
 
   const reset = () => {
-    setEditing(null);
+    setModalMode(null);
     setForm(emptyLink);
   };
 
@@ -555,8 +570,8 @@ function LinksEditor({ links, onSaved }) {
 
     try {
       const response = await api('/api/linktree/link', {
-        method: editing ? 'PUT' : 'POST',
-        body: JSON.stringify(editing ? { ...payload, id: editing } : payload)
+        method: modalMode === 'edit' ? 'PUT' : 'POST',
+        body: JSON.stringify(modalMode === 'edit' ? { ...payload, id: form.id } : payload)
       });
       reset();
       setItems(response.links);
@@ -579,6 +594,25 @@ function LinksEditor({ links, onSaved }) {
       await onSaved(nextLinks);
     } finally {
       setActionId(null);
+    }
+  };
+
+  const removeClick = async (clickId) => {
+    if (!window.confirm('Delete this click from the button report?')) return;
+    setDeletingClickId(clickId);
+    try {
+      await api('/api/linktree/click/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id: clickId })
+      });
+      const nextClicks = clicks.filter((click) => click.id !== clickId);
+      const nextLinks = items.map((link) =>
+        link.id === selected?.id ? { ...link, click_count: Math.max(Number(link.click_count || 0) - 1, 0) } : link
+      );
+      setItems(nextLinks);
+      await onSaved(nextLinks, { linkClicks: nextClicks });
+    } finally {
+      setDeletingClickId(null);
     }
   };
 
@@ -652,89 +686,196 @@ function LinksEditor({ links, onSaved }) {
     await saveOrder(orderedItems);
   };
 
-  return (
-    <div className="split-layout">
-      <section className="admin-card">
-        <div className="section-title">
-          <h3>All buttons</h3>
-          <span>{orderSaving ? 'Saving order...' : `${links.length} configured`}</span>
+  if (selected) {
+    return (
+      <section className="admin-card organization-page">
+        <button className="text-button back-button" onClick={() => setSelectedId(null)}>
+          <ArrowLeft size={18} aria-hidden="true" />
+          Back to all buttons
+        </button>
+
+        <div className="detail-header organization-hero">
+          <div>
+            <span className="eyebrow">Total clicks</span>
+            <strong>{selected.click_count}</strong>
+            <h3>{selected.title}</h3>
+            <p className="detail-note">{selected.url}</p>
+          </div>
+          <div className="detail-actions">
+            <button className="secondary-button" onClick={() => startEdit(selected)}>
+              <Edit3 size={17} aria-hidden="true" />
+              Edit
+            </button>
+            <button className="secondary-button danger" disabled={actionId === selected.id} onClick={() => remove(selected.id)}>
+              {actionId === selected.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={17} aria-hidden="true" />}
+              Delete
+            </button>
+          </div>
         </div>
-        <div className="item-list">
-          {items.map((link, index) => (
-            <article
-              className={draggedId === link.id ? 'list-item dragging' : 'list-item'}
-              draggable
-              key={link.id}
-              onDragEnd={() => setDraggedId(null)}
-              onDragOver={(event) => handleDragOver(event, link.id)}
-              onDragStart={() => setDraggedId(link.id)}
-              onDrop={handleDrop}
-            >
-              <span className="drag-handle" title="Drag to reorder">
-                <GripVertical size={18} aria-hidden="true" />
-              </span>
-              <div>
-                <strong>{link.title}</strong>
-                <span>{link.url}</span>
-              </div>
-              <span className="click-count">{Number(link.click_count || 0)} clicks</span>
-              <span className={link.is_active ? 'status active' : 'status'}>{link.is_active ? 'Visible' : 'Hidden'}</span>
-              <div className="order-controls" aria-label={`Reorder ${link.title}`}>
-                <button className="icon-button small" disabled={index === 0 || orderSaving} onClick={() => moveByButton(index, -1)} aria-label={`Move ${link.title} up`}>
-                  <ArrowUp size={15} aria-hidden="true" />
-                </button>
-                <button className="icon-button small" disabled={index === items.length - 1 || orderSaving} onClick={() => moveByButton(index, 1)} aria-label={`Move ${link.title} down`}>
-                  <ArrowDown size={15} aria-hidden="true" />
-                </button>
-              </div>
+
+        <div className="visits-table-wrap">
+          <table className="visits-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Language</th>
+                <th>Browser</th>
+                <th>System</th>
+                <th>Device</th>
+                <th>Location</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {selectedClicks.map((click) => (
+                <tr key={click.id}>
+                  <td data-label="Date">{formatDate(click.clicked_at)}</td>
+                  <td data-label="Language">{click.language || '-'}</td>
+                  <td data-label="Browser">{click.browser || '-'}</td>
+                  <td data-label="System">{click.os || '-'}</td>
+                  <td data-label="Device">{click.device || '-'}</td>
+                  <td data-label="Location">{formatLocation(click)}</td>
+                  <td data-label="Actions">
+                    <button className="secondary-button compact danger" disabled={deletingClickId === click.id} onClick={() => removeClick(click.id)}>
+                      {deletingClickId === click.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {selectedClicks.length === 0 ? (
+                <tr>
+                  <td colSpan="7">No clicks recorded for this button yet.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        {modalMode ? (
+          <LinkModal form={form} modalTitle="Edit button" onClose={reset} onSave={save} saving={saving} setForm={setForm} />
+        ) : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className="admin-card organizations-home">
+      <div className="section-title organizations-title">
+        <div>
+          <h3>Buttons</h3>
+          <span>{orderSaving ? 'Saving order...' : `${items.length} configured`}</span>
+        </div>
+        <button className="primary-button" onClick={openCreate}>
+          <Plus size={18} aria-hidden="true" />
+          Create new
+        </button>
+      </div>
+      <div className="organizations-table">
+        {items.map((link, index) => (
+          <article
+            className={draggedId === link.id ? 'organization-card-row button-card-row dragging' : 'organization-card-row button-card-row'}
+            draggable
+            key={link.id}
+            onDragEnd={() => setDraggedId(null)}
+            onDragOver={(event) => handleDragOver(event, link.id)}
+            onDragStart={() => setDraggedId(link.id)}
+            onDrop={handleDrop}
+          >
+            <span className="drag-handle" title="Drag to reorder">
+              <GripVertical size={18} aria-hidden="true" />
+            </span>
+            <div className="organization-summary">
+              <strong>{link.title}</strong>
+              <code>{link.url}</code>
+            </div>
+            <div className="organization-metric">
+              <b>{Number(link.click_count || 0)}</b>
+              <span>clicks</span>
+            </div>
+            <span className={link.is_active ? 'status active' : 'status'}>{link.is_active ? 'Visible' : 'Hidden'}</span>
+            <div className="order-controls" aria-label={`Reorder ${link.title}`}>
+              <button className="icon-button small" disabled={index === 0 || orderSaving} onClick={() => moveByButton(index, -1)} aria-label={`Move ${link.title} up`}>
+                <ArrowUp size={15} aria-hidden="true" />
+              </button>
+              <button className="icon-button small" disabled={index === items.length - 1 || orderSaving} onClick={() => moveByButton(index, 1)} aria-label={`Move ${link.title} down`}>
+                <ArrowDown size={15} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="organization-row-actions">
+              <button className="secondary-button compact" onClick={() => setSelectedId(link.id)}>
+                <Eye size={17} aria-hidden="true" />
+                View details
+              </button>
               <button className="secondary-button compact" disabled={actionId === link.id} onClick={() => toggleVisibility(link)}>
                 {actionId === link.id ? <span className="spinner" aria-hidden="true" /> : null}
                 {link.is_active ? 'Hide' : 'Show'}
               </button>
               <button className="secondary-button compact" disabled={actionId === link.id || orderSaving} onClick={() => startEdit(link)} aria-label={`Edit ${link.title}`}>
-                <Edit3 size={18} aria-hidden="true" />
+                <Edit3 size={17} aria-hidden="true" />
                 Edit
               </button>
               <button className="secondary-button compact danger" disabled={actionId === link.id} onClick={() => remove(link.id)} aria-label={`Delete ${link.title}`}>
-                {actionId === link.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={18} aria-hidden="true" />}
+                {actionId === link.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={17} aria-hidden="true" />}
                 Delete
               </button>
-            </article>
-          ))}
-        </div>
-      </section>
+            </div>
+          </article>
+        ))}
+      </div>
 
-      <form className="admin-card form-card" onSubmit={save}>
+      {modalMode ? (
+        <LinkModal
+          form={form}
+          modalTitle={modalMode === 'edit' ? 'Edit button' : 'Create new button'}
+          onClose={reset}
+          onSave={save}
+          saving={saving}
+          setForm={setForm}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function LinkModal({ form, modalTitle, onClose, onSave, saving, setForm }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="link-modal-title">
         <div className="section-title">
-          <h3>{editing ? 'Edit button' : 'New button'}</h3>
-          {editing ? (
-            <button className="text-button" type="button" onClick={reset}>
-              <X size={16} aria-hidden="true" />
+          <h3 id="link-modal-title">{modalTitle}</h3>
+          <button className="icon-button" disabled={saving} type="button" onClick={onClose} aria-label="Close modal">
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+        <form className="form-card" onSubmit={onSave}>
+          <label>
+            Button text
+            <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required />
+          </label>
+          <label>
+            URL
+            <input value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} required />
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))}
+            />
+            Show on public page. Hidden buttons keep their click history.
+          </label>
+          <div className="modal-actions">
+            <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>
               Cancel
             </button>
-          ) : null}
-        </div>
-        <label>
-          Button text
-          <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} required />
-        </label>
-        <label>
-          URL
-          <input value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} required />
-        </label>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={form.is_active}
-            onChange={(event) => setForm((current) => ({ ...current, is_active: event.target.checked }))}
-          />
-          Show on public page. Hidden buttons keep their click history.
-        </label>
-        <button className="primary-button" disabled={saving} type="submit">
-          {saving ? <span className="spinner light" aria-hidden="true" /> : <Plus size={18} aria-hidden="true" />}
-          {saving ? 'Saving...' : editing ? 'Save changes' : 'Add button'}
-        </button>
-      </form>
+            <button className="primary-button" disabled={saving} type="submit">
+              {saving ? <span className="spinner light" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+              {saving ? 'Saving...' : 'Save button'}
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

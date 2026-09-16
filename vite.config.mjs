@@ -350,6 +350,11 @@ function getLinktreeDb() {
       browser TEXT,
       os TEXT,
       device TEXT,
+      country TEXT,
+      region TEXT,
+      city TEXT,
+      timezone TEXT,
+      browser_region TEXT,
       referrer TEXT,
       user_agent TEXT,
       FOREIGN KEY (link_id) REFERENCES links(id) ON DELETE SET NULL
@@ -365,6 +370,11 @@ function getLinktreeDb() {
   ].forEach(([column, type]) => {
     try {
       linktreeDb.exec(`ALTER TABLE visits ADD COLUMN ${column} ${type}`);
+    } catch {
+      // Column already exists in the local SQLite database.
+    }
+    try {
+      linktreeDb.exec(`ALTER TABLE link_clicks ADD COLUMN ${column} ${type}`);
     } catch {
       // Column already exists in the local SQLite database.
     }
@@ -487,6 +497,18 @@ function getVisits(db) {
     FROM visits
     LEFT JOIN organizations ON organizations.id = visits.organization_id
     ORDER BY visits.visited_at DESC
+    LIMIT 500
+  `).all();
+}
+
+function getLinkClicks(db) {
+  return db.prepare(`
+    SELECT
+      link_clicks.*,
+      links.title AS link_title
+    FROM link_clicks
+    LEFT JOIN links ON links.id = link_clicks.link_id
+    ORDER BY link_clicks.clicked_at DESC
     LIMIT 500
   `).all();
 }
@@ -623,12 +645,13 @@ function linktreePlugin() {
 
         try {
           const db = getLinktreeDb();
-          sendJson(res, 200, {
-            profile: getProfile(db),
-            links: getLinks(db),
-            organizations: getOrganizations(db),
-            visits: getVisits(db)
-          });
+            sendJson(res, 200, {
+              profile: getProfile(db),
+              links: getLinks(db),
+              organizations: getOrganizations(db),
+              visits: getVisits(db),
+              linkClicks: getLinkClicks(db)
+            });
         } catch (error) {
           sendJson(res, 500, { error: error.message });
         }
@@ -705,10 +728,13 @@ function linktreePlugin() {
             return;
           }
 
-          const visitor = parseVisitor(req);
+          const visitor = parseVisitor(req, {
+            timezone: body.timezone || '',
+            browserRegion: body.browser_region || ''
+          });
           db.prepare(`
-            INSERT INTO link_clicks (link_id, clicked_at, language, browser, os, device, referrer, user_agent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO link_clicks (link_id, clicked_at, language, browser, os, device, country, region, city, timezone, browser_region, referrer, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             link.id,
             new Date().toISOString(),
@@ -716,10 +742,31 @@ function linktreePlugin() {
             visitor.browser,
             visitor.os,
             visitor.device,
+            visitor.country,
+            visitor.region,
+            visitor.city,
+            visitor.timezone,
+            visitor.browserRegion,
             visitor.referrer,
             visitor.userAgent
           );
 
+          sendJson(res, 200, { ok: true });
+        } catch (error) {
+          sendJson(res, 500, { error: error.message });
+        }
+      });
+
+      server.middlewares.use('/api/linktree/click/delete', async (req, res) => {
+        if (req.method !== 'POST') {
+          sendJson(res, 405, { error: 'Method not allowed' });
+          return;
+        }
+
+        try {
+          const body = await readRequestBody(req);
+          const db = getLinktreeDb();
+          db.prepare('DELETE FROM link_clicks WHERE id = ?').run(Number(body.id));
           sendJson(res, 200, { ok: true });
         } catch (error) {
           sendJson(res, 500, { error: error.message });

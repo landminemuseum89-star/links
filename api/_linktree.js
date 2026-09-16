@@ -17,6 +17,7 @@ function sendMethodNotAllowed(res) {
 function parseBody(body) {
   if (!body) return {};
   if (typeof body === 'string') return JSON.parse(body || '{}');
+  if (Buffer.isBuffer(body)) return JSON.parse(body.toString('utf8') || '{}');
   return body;
 }
 
@@ -96,6 +97,20 @@ async function getLinks(activeOnly = false, options = {}) {
   }));
 }
 
+function withLinkClickNames(clicks, links) {
+  const names = Object.fromEntries(links.map((link) => [link.id, link.title]));
+  return clicks.map((click) => ({
+    ...click,
+    link_title: names[click.link_id] || null
+  }));
+}
+
+async function getLinkClicks(preloadedLinks = null) {
+  const clicks = await supabaseRequest('/rest/v1/link_clicks?select=*&order=clicked_at.desc&limit=500');
+  const links = preloadedLinks || await supabaseRequest('/rest/v1/links?select=id,title');
+  return withLinkClickNames(clicks, links);
+}
+
 function withOrganizationStats(organizations, visits) {
   const stats = visits.reduce((acc, visit) => {
     if (!visit.organization_id) return acc;
@@ -136,19 +151,21 @@ async function getVisits(preloadedOrganizations = null) {
 }
 
 async function getAdminData() {
-  const [profile, links, organizations, visitStatsRows, visits] = await Promise.all([
+  const [profile, links, organizations, visitStatsRows, visits, linkClicks] = await Promise.all([
     getProfile(),
     getLinks(false),
     supabaseRequest('/rest/v1/organizations?select=*&order=created_at.desc'),
     supabaseRequest('/rest/v1/visits?select=organization_id,visited_at'),
-    supabaseRequest('/rest/v1/visits?select=*&order=visited_at.desc&limit=500')
+    supabaseRequest('/rest/v1/visits?select=*&order=visited_at.desc&limit=500'),
+    supabaseRequest('/rest/v1/link_clicks?select=*&order=clicked_at.desc&limit=500')
   ]);
 
   return {
     profile,
     links,
     organizations: withOrganizationStats(organizations, visitStatsRows),
-    visits: withVisitOrganizationNames(visits, organizations)
+    visits: withVisitOrganizationNames(visits, organizations),
+    linkClicks: withLinkClickNames(linkClicks, links)
   };
 }
 
@@ -240,6 +257,7 @@ module.exports = {
   ADMIN_PASSWORD,
   SUPABASE_BUCKET,
   getAdminData,
+  getLinkClicks,
   getLinks,
   getOrganizations,
   getProfile,
