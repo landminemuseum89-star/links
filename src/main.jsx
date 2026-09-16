@@ -858,6 +858,14 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
               <span>visits</span>
             </div>
             <div className="organization-row-actions">
+              <a
+                className="secondary-button compact"
+                href={getQrDownloadUrl(organization.code)}
+                download={`qr-${organization.code}.png`}
+              >
+                <Download size={17} aria-hidden="true" />
+                Download QR
+              </a>
               <button className="secondary-button compact" onClick={() => setSelectedId(organization.id)}>
                 <Eye size={17} aria-hidden="true" />
                 View details

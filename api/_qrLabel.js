@@ -1,7 +1,8 @@
 const { PNG } = require('pngjs');
 
 const LIGHT = [255, 250, 242, 255];
-const LABEL = [142, 142, 142, 255];
+const LABEL = [180, 180, 180, 255];
+const LABEL_TEXT_HEIGHT = 40;
 const FONT = {
   '0': ['01110', '10001', '10011', '10101', '11001', '10001', '01110'],
   '1': ['00100', '01100', '00100', '00100', '00100', '00100', '01110'],
@@ -34,31 +35,38 @@ function fillRect(png, x, y, width, height, color) {
   }
 }
 
-function drawText(png, text, x, y, scale, color) {
+function drawText(png, text, x, y, targetHeight, color) {
   let cursor = x;
   const normalized = String(text).toUpperCase();
+  const charWidth = Math.round((targetHeight * 5) / 7);
+  const charGap = Math.round((targetHeight * 2) / 7);
 
   for (const char of normalized) {
     const glyph = FONT[char] || FONT['-'];
     glyph.forEach((row, rowIndex) => {
       [...row].forEach((pixel, columnIndex) => {
         if (pixel === '1') {
-          fillRect(png, cursor + columnIndex * scale, y + rowIndex * scale, scale, scale, color);
+          const x1 = cursor + Math.round((columnIndex * charWidth) / 5);
+          const x2 = cursor + Math.round(((columnIndex + 1) * charWidth) / 5);
+          const y1 = y + Math.round((rowIndex * targetHeight) / 7);
+          const y2 = y + Math.round(((rowIndex + 1) * targetHeight) / 7);
+          fillRect(png, x1, y1, Math.max(1, x2 - x1), Math.max(1, y2 - y1), color);
         }
       });
     });
-    cursor += 7 * scale;
+    cursor += charWidth + charGap;
   }
 }
 
-function getTextWidth(text, scale) {
-  return String(text).length * 5 * scale + Math.max(String(text).length - 1, 0) * 2 * scale;
+function getTextWidth(text, targetHeight) {
+  const charWidth = Math.round((targetHeight * 5) / 7);
+  const charGap = Math.round((targetHeight * 2) / 7);
+  return String(text).length * charWidth + Math.max(String(text).length - 1, 0) * charGap;
 }
 
 function addQrCodeLabel(qrBuffer, code) {
   const qr = PNG.sync.read(qrBuffer);
   const labelHeight = 110;
-  const scale = 8;
   const output = new PNG({ width: qr.width, height: qr.height + labelHeight });
 
   for (let y = 0; y < output.height; y += 1) {
@@ -70,10 +78,10 @@ function addQrCodeLabel(qrBuffer, code) {
   PNG.bitblt(qr, output, 0, 0, qr.width, qr.height, 0, 0);
 
   const label = String(code);
-  const labelWidth = getTextWidth(label, scale);
+  const labelWidth = getTextWidth(label, LABEL_TEXT_HEIGHT);
   const x = Math.max(32, output.width - labelWidth - 36);
-  const y = qr.height + Math.floor((labelHeight - 7 * scale) / 2);
-  drawText(output, label, x, y, scale, LABEL);
+  const y = qr.height + Math.floor((labelHeight - LABEL_TEXT_HEIGHT) / 2);
+  drawText(output, label, x, y, LABEL_TEXT_HEIGHT, LABEL);
 
   return PNG.sync.write(output);
 }
