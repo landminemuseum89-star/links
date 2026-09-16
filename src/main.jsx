@@ -15,6 +15,7 @@ import {
   Link as LinkIcon,
   LockKeyhole,
   LogOut,
+  Menu,
   Plus,
   QrCode,
   Save,
@@ -267,6 +268,7 @@ function AdminApp() {
 
 function Dashboard({ onLogout }) {
   const [tab, setTab] = useState('profile');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -311,6 +313,13 @@ function Dashboard({ onLogout }) {
     };
   }, [data]);
 
+  const currentTitle = tab === 'profile' ? 'Photo and text' : tab === 'links' ? 'Public buttons' : 'QR organizations';
+
+  const changeTab = (nextTab) => {
+    setTab(nextTab);
+    setSidebarOpen(false);
+  };
+
   if (!data) {
     return (
       <main className="admin-shell">
@@ -320,22 +329,40 @@ function Dashboard({ onLogout }) {
   }
 
   return (
-    <main className="admin-shell">
-      <aside className="admin-sidebar">
+    <main className={sidebarOpen ? 'admin-shell sidebar-open' : 'admin-shell'}>
+      <header className="mobile-admin-header">
+        <button className="icon-button menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+          <Menu size={21} aria-hidden="true" />
+        </button>
         <div>
-          <span className="eyebrow">Cambodia Landmine Museum</span>
-          <h1>Link manager</h1>
+          <span className="eyebrow">You are in</span>
+          <h1>{currentTitle}</h1>
+        </div>
+      </header>
+
+      <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Close menu" />
+
+      <aside className="admin-sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-mark">CLM</div>
+          <div>
+            <span className="eyebrow">Cambodia Landmine Museum</span>
+            <h1>Links admin</h1>
+          </div>
+          <button className="icon-button sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
         <nav className="admin-nav" aria-label="Admin sections">
-          <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}>
+          <button className={tab === 'profile' ? 'active' : ''} onClick={() => changeTab('profile')}>
             <Camera size={18} aria-hidden="true" />
             Profile
           </button>
-          <button className={tab === 'links' ? 'active' : ''} onClick={() => setTab('links')}>
+          <button className={tab === 'links' ? 'active' : ''} onClick={() => changeTab('links')}>
             <LinkIcon size={18} aria-hidden="true" />
             Buttons
           </button>
-          <button className={tab === 'organizations' ? 'active' : ''} onClick={() => setTab('organizations')}>
+          <button className={tab === 'organizations' ? 'active' : ''} onClick={() => changeTab('organizations')}>
             <QrCode size={18} aria-hidden="true" />
             QR organizations
           </button>
@@ -353,8 +380,8 @@ function Dashboard({ onLogout }) {
       <section className="admin-content">
         <header className="admin-topbar">
           <div>
-            <span className="eyebrow">Local session</span>
-            <h2>{tab === 'profile' ? 'Photo and text' : tab === 'links' ? 'Public buttons' : 'QR organizations'}</h2>
+            <span className="eyebrow">You are in</span>
+            <h2>{currentTitle}</h2>
           </div>
           <div className="topbar-stats">
             <Stat label="Buttons" value={totals.links} />
