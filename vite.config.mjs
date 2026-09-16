@@ -758,6 +758,27 @@ function linktreePlugin() {
         }
       });
 
+      server.middlewares.use('/api/linktree/link-order', async (req, res) => {
+        if (req.method !== 'PUT') {
+          sendJson(res, 405, { error: 'Method not allowed' });
+          return;
+        }
+
+        try {
+          const body = await readRequestBody(req);
+          const db = getLinktreeDb();
+          const now = new Date().toISOString();
+          const updatePosition = db.prepare('UPDATE links SET position = ?, updated_at = ? WHERE id = ?');
+          const updateOrder = db.transaction((links) => {
+            links.forEach((link) => updatePosition.run(Number(link.position), now, Number(link.id)));
+          });
+          updateOrder(Array.isArray(body.links) ? body.links : []);
+          sendJson(res, 200, { ok: true, links: getLinks(db) });
+        } catch (error) {
+          sendJson(res, 500, { error: error.message });
+        }
+      });
+
       server.middlewares.use('/api/linktree/link', async (req, res) => {
         if (!['POST', 'PUT'].includes(req.method)) {
           sendJson(res, 405, { error: 'Method not allowed' });

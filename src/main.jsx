@@ -271,15 +271,25 @@ function Dashboard({ onLogout }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
-  const load = useCallback(async () => {
-    setBusy(true);
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setBusy(true);
     try {
       const payload = await api('/api/linktree/admin');
       setData(payload);
     } finally {
-      setBusy(false);
+      if (!quiet) setBusy(false);
     }
   }, []);
+
+  const patchData = useCallback((patch) => {
+    setData((current) => (current ? { ...current, ...patch } : current));
+  }, []);
+
+  const syncLater = useCallback(() => {
+    load({ quiet: true }).catch((error) => {
+      console.error('Background refresh failed:', error.message);
+    });
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -358,16 +368,34 @@ function Dashboard({ onLogout }) {
         {busy ? <div className="quiet-status">Updating...</div> : null}
 
         {tab === 'profile' ? (
-          <ProfileEditor profile={data.profile} onSaved={() => load().then(() => flash('Profile saved'))} />
+          <ProfileEditor
+            profile={data.profile}
+            onSaved={(profile) => {
+              patchData({ profile });
+              flash('Profile saved');
+              syncLater();
+            }}
+          />
         ) : null}
         {tab === 'links' ? (
-          <LinksEditor links={data.links} onSaved={() => load().then(() => flash('Buttons updated'))} />
+          <LinksEditor
+            links={data.links}
+            onSaved={(links) => {
+              patchData({ links });
+              flash('Buttons updated');
+              syncLater();
+            }}
+          />
         ) : null}
         {tab === 'organizations' ? (
           <OrganizationsEditor
             organizations={data.organizations}
             visits={data.visits}
-            onSaved={() => load().then(() => flash('Organizations updated'))}
+            onSaved={(patch) => {
+              patchData(patch);
+              flash('Organizations updated');
+              syncLater();
+            }}
           />
         ) : null}
       </section>
@@ -387,16 +415,27 @@ function Stat({ label, value }) {
 function ProfileEditor({ profile, onSaved }) {
   const [form, setForm] = useState(profile);
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setForm(profile);
+  }, [profile]);
 
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
 
   const save = async (event) => {
     event.preventDefault();
-    await api('/api/linktree/profile', {
-      method: 'PUT',
-      body: JSON.stringify(form)
-    });
-    await onSaved();
+    setSaving(true);
+    try {
+      const payload = await api('/api/linktree/profile', {
+        method: 'PUT',
+        body: JSON.stringify(form)
+      });
+      setForm(payload.profile);
+      await onSaved(payload.profile);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const uploadImage = async (event) => {
@@ -411,8 +450,8 @@ function ProfileEditor({ profile, onSaved }) {
           method: 'POST',
           body: JSON.stringify({ fileName: file.name, imageData: reader.result })
         });
-        setForm((current) => ({ ...current, avatar_url: payload.avatar_url }));
-        await onSaved();
+        setForm(payload.profile);
+        await onSaved(payload.profile);
       } finally {
         setUploading(false);
       }
@@ -446,9 +485,9 @@ function ProfileEditor({ profile, onSaved }) {
           Additional text
           <textarea value={form.bio} onChange={(event) => update('bio', event.target.value)} rows="4" />
         </label>
-        <button className="primary-button" type="submit">
-          <Save size={18} aria-hidden="true" />
-          Save profile
+        <button className="primary-button" disabled={saving} type="submit">
+          {saving ? <span className="spinner light" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+          {saving ? 'Saving...' : 'Save profile'}
         </button>
       </section>
     </form>
@@ -488,12 +527,13 @@ function LinksEditor({ links, onSaved }) {
     };
 
     try {
-      await api('/api/linktree/link', {
+      const response = await api('/api/linktree/link', {
         method: editing ? 'PUT' : 'POST',
         body: JSON.stringify(editing ? { ...payload, id: editing } : payload)
       });
       reset();
-      await onSaved();
+      setItems(response.links);
+      await onSaved(response.links);
     } finally {
       setSaving(false);
     }
@@ -507,7 +547,9 @@ function LinksEditor({ links, onSaved }) {
         method: 'POST',
         body: JSON.stringify({ id })
       });
-      await onSaved();
+      const nextLinks = items.filter((link) => link.id !== id);
+      setItems(nextLinks);
+      await onSaved(nextLinks);
     } finally {
       setActionId(null);
     }
@@ -516,14 +558,15 @@ function LinksEditor({ links, onSaved }) {
   const toggleVisibility = async (link) => {
     setActionId(link.id);
     try {
-      await api('/api/linktree/link', {
+      const payload = await api('/api/linktree/link', {
         method: 'PUT',
         body: JSON.stringify({
           ...link,
           is_active: !Boolean(link.is_active)
         })
       });
-      await onSaved();
+      setItems(payload.links);
+      await onSaved(payload.links);
     } finally {
       setActionId(null);
     }
@@ -531,20 +574,16 @@ function LinksEditor({ links, onSaved }) {
 
   const saveOrder = async (orderedItems) => {
     setOrderSaving(true);
+    setItems(orderedItems);
     try {
-      await Promise.all(
-        orderedItems.map((link, index) =>
-          api('/api/linktree/link', {
-            method: 'PUT',
-            body: JSON.stringify({
-              ...link,
-              position: index + 1,
-              is_active: Boolean(link.is_active)
-            })
-          })
-        )
-      );
-      await onSaved();
+      const payload = await api('/api/linktree/link-order', {
+        method: 'PUT',
+        body: JSON.stringify({
+          links: orderedItems.map((link, index) => ({ id: link.id, position: index + 1 }))
+        })
+      });
+      setItems(payload.links);
+      await onSaved(payload.links);
     } finally {
       setOrderSaving(false);
     }
@@ -678,6 +717,8 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
   const [modalMode, setModalMode] = useState(null);
   const [form, setForm] = useState({ ...emptyOrganization, code: makeCode() });
   const [deletingVisitId, setDeletingVisitId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [actionId, setActionId] = useState(null);
 
   const selected = organizations.find((org) => org.id === selectedId) || null;
   const selectedVisits = selected ? visits.filter((visit) => visit.organization_id === selected.id) : [];
@@ -704,22 +745,32 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
 
   const save = async (event) => {
     event.preventDefault();
-    await api('/api/linktree/organization', {
-      method: modalMode === 'edit' ? 'PUT' : 'POST',
-      body: JSON.stringify(form)
-    });
-    closeModal();
-    await onSaved();
+    setSaving(true);
+    try {
+      const payload = await api('/api/linktree/organization', {
+        method: modalMode === 'edit' ? 'PUT' : 'POST',
+        body: JSON.stringify(form)
+      });
+      closeModal();
+      await onSaved({ organizations: payload.organizations });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id) => {
     if (!window.confirm('Delete this organization permanently? Historical visits will keep the code, but will no longer be grouped under this organization.')) return;
-    await api('/api/linktree/organization/delete', {
-      method: 'POST',
-      body: JSON.stringify({ id })
-    });
-    if (selectedId === id) setSelectedId(null);
-    await onSaved();
+    setActionId(id);
+    try {
+      await api('/api/linktree/organization/delete', {
+        method: 'POST',
+        body: JSON.stringify({ id })
+      });
+      if (selectedId === id) setSelectedId(null);
+      await onSaved({ organizations: organizations.filter((organization) => organization.id !== id) });
+    } finally {
+      setActionId(null);
+    }
   };
 
   const removeVisit = async (visitId) => {
@@ -730,7 +781,14 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
         method: 'POST',
         body: JSON.stringify({ id: visitId })
       });
-      await onSaved();
+      await onSaved({
+        visits: visits.filter((visit) => visit.id !== visitId),
+        organizations: organizations.map((organization) =>
+          organization.id === selected?.id
+            ? { ...organization, visit_count: Math.max(Number(organization.visit_count || 0) - 1, 0) }
+            : organization
+        )
+      });
     } finally {
       setDeletingVisitId(null);
     }
@@ -758,8 +816,8 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
               <Edit3 size={17} aria-hidden="true" />
               Edit
             </button>
-            <button className="secondary-button danger" onClick={() => remove(selected.id)}>
-              <Trash2 size={17} aria-hidden="true" />
+            <button className="secondary-button danger" disabled={actionId === selected.id} onClick={() => remove(selected.id)}>
+              {actionId === selected.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={17} aria-hidden="true" />}
               Delete
             </button>
           </div>
@@ -797,13 +855,13 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
             <tbody>
               {selectedVisits.map((visit) => (
                 <tr key={visit.id}>
-                  <td>{formatDate(visit.visited_at)}</td>
-                  <td>{visit.language || '-'}</td>
-                  <td>{visit.browser || '-'}</td>
-                  <td>{visit.os || '-'}</td>
-                  <td>{visit.device || '-'}</td>
-                  <td>{formatLocation(visit)}</td>
-                  <td>
+                  <td data-label="Date">{formatDate(visit.visited_at)}</td>
+                  <td data-label="Language">{visit.language || '-'}</td>
+                  <td data-label="Browser">{visit.browser || '-'}</td>
+                  <td data-label="System">{visit.os || '-'}</td>
+                  <td data-label="Device">{visit.device || '-'}</td>
+                  <td data-label="Location">{formatLocation(visit)}</td>
+                  <td data-label="Actions">
                     <button className="secondary-button compact danger" disabled={deletingVisitId === visit.id} onClick={() => removeVisit(visit.id)}>
                       {deletingVisitId === visit.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={16} aria-hidden="true" />}
                       Delete
@@ -826,6 +884,7 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
             modalTitle={modalTitle}
             onClose={closeModal}
             onSave={save}
+            saving={saving}
             setForm={setForm}
           />
         ) : null}
@@ -874,8 +933,8 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
                 <Edit3 size={17} aria-hidden="true" />
                 Edit
               </button>
-              <button className="secondary-button compact danger" onClick={() => remove(organization.id)}>
-                <Trash2 size={17} aria-hidden="true" />
+              <button className="secondary-button compact danger" disabled={actionId === organization.id} onClick={() => remove(organization.id)}>
+                {actionId === organization.id ? <span className="spinner" aria-hidden="true" /> : <Trash2 size={17} aria-hidden="true" />}
                 Delete
               </button>
             </div>
@@ -896,6 +955,7 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
           modalTitle={modalTitle}
           onClose={closeModal}
           onSave={save}
+          saving={saving}
           setForm={setForm}
         />
       ) : null}
@@ -903,13 +963,13 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
   );
 }
 
-function OrganizationModal({ form, modalTitle, onClose, onSave, setForm }) {
+function OrganizationModal({ form, modalTitle, onClose, onSave, saving, setForm }) {
   return (
     <div className="modal-backdrop" role="presentation">
       <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="organization-modal-title">
         <div className="section-title">
           <h3 id="organization-modal-title">{modalTitle}</h3>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close modal">
+          <button className="icon-button" disabled={saving} type="button" onClick={onClose} aria-label="Close modal">
             <X size={18} aria-hidden="true" />
           </button>
         </div>
@@ -940,12 +1000,12 @@ function OrganizationModal({ form, modalTitle, onClose, onSave, setForm }) {
             />
           </label>
           <div className="modal-actions">
-            <button className="secondary-button" type="button" onClick={onClose}>
+            <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>
               Cancel
             </button>
-            <button className="primary-button" type="submit">
-              <Save size={18} aria-hidden="true" />
-              Save organization
+            <button className="primary-button" disabled={saving} type="submit">
+              {saving ? <span className="spinner light" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}
+              {saving ? 'Saving...' : 'Save organization'}
             </button>
           </div>
         </form>

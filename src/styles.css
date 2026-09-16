@@ -675,6 +675,10 @@ textarea {
   justify-content: flex-end;
 }
 
+.organization-row-actions > * {
+  min-width: 0;
+}
+
 .back-button {
   justify-self: start;
 }
@@ -929,6 +933,7 @@ code {
 
 .visits-table-wrap {
   overflow-x: auto;
+  width: 100%;
 }
 
 .visits-table {
@@ -1048,11 +1053,17 @@ code {
   }
 
   .organization-row-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     justify-content: stretch;
   }
 
   .organization-row-actions .secondary-button {
-    flex: 1 1 150px;
+    width: 100%;
+  }
+
+  .qr-box .primary-button {
+    width: 100%;
   }
 }
 
@@ -1106,6 +1117,15 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .qr-box > svg {
+    display: none;
+  }
+
+  .qr-box code,
+  .organization-summary code {
+    font-size: 0.78rem;
+  }
+
   .org-row {
     grid-template-columns: 1fr;
   }
@@ -1125,11 +1145,66 @@ code {
   }
 
   .organization-row-actions {
-    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .organization-row-actions .secondary-button {
     width: 100%;
+  }
+
+  .visits-table-wrap {
+    overflow: visible;
+  }
+
+  .visits-table,
+  .visits-table thead,
+  .visits-table tbody,
+  .visits-table tr,
+  .visits-table td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .visits-table {
+    border-collapse: separate;
+    border-spacing: 0 10px;
+  }
+
+  .visits-table thead {
+    display: none;
+  }
+
+  .visits-table tr {
+    background: #fffdf8;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  .visits-table td {
+    align-items: start;
+    border-bottom: 0;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 92px minmax(0, 1fr);
+    padding: 8px 0;
+  }
+
+  .visits-table td::before {
+    color: var(--muted);
+    content: attr(data-label);
+    font-size: 0.74rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .visits-table td[colspan] {
+    display: block;
+  }
+
+  .visits-table td[colspan]::before {
+    content: none;
   }
 
   .modal-backdrop {
