@@ -7,6 +7,7 @@ const {
   getOrganizations,
   getProfile,
   getRequestOrigin,
+  getVisits,
   normalizeUrl,
   parseBody,
   parseVisitor,
@@ -320,6 +321,26 @@ async function handleClickDelete(req, res) {
   });
 }
 
+async function handleVisitDelete(req, res) {
+  if (req.method !== 'POST') return sendMethodNotAllowed(res);
+
+  const body = parseBody(req.body);
+  const id = Number(body.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: 'Missing visit id' });
+    return;
+  }
+
+  await supabaseRequest(`/rest/v1/visits?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' }
+  });
+
+  const organizations = await getOrganizations();
+  const visits = await getVisits(organizations);
+  res.status(200).json({ ok: true, organizations, visits });
+}
+
 module.exports = async function handler(req, res) {
   try {
     const route = getRoute(req);
@@ -333,13 +354,13 @@ module.exports = async function handler(req, res) {
     if (route === 'link') return await handleLink(req, res);
     if (route === 'link-order') return await handleLinkOrder(req, res);
     if (route === 'link-click') return await handleLinkClick(req, res);
-    if (route === 'link/delete') return await handleDelete(req, res, 'links');
+    if (route === 'link/delete' || route === 'link-delete') return await handleDelete(req, res, 'links');
     if (route === 'organization') return await handleOrganization(req, res);
-    if (route === 'organization/delete') return await handleDelete(req, res, 'organizations');
+    if (route === 'organization/delete' || route === 'organization-delete') return await handleDelete(req, res, 'organizations');
     if (route === 'profile') return await handleProfile(req, res);
     if (route === 'profile-image') return await handleProfileImage(req, res);
     if (route === 'qr') return await handleQr(req, res);
-    if (route === 'visit/delete') return await handleDelete(req, res, 'visits');
+    if (route === 'visit/delete' || route === 'visit-delete') return await handleVisitDelete(req, res);
     if (route === 'click/delete' || route === 'link-click-delete') return await handleClickDelete(req, res);
 
     res.status(404).json({ error: 'Endpoint not found' });

@@ -585,7 +585,7 @@ function LinksEditor({ links, clicks = [], onSaved }) {
     if (!window.confirm('Delete this button permanently? Its statistics will no longer appear in the panel.')) return;
     setActionId(id);
     try {
-      await api('/api/linktree/link/delete', {
+      await api('/api/linktree/link-delete', {
         method: 'POST',
         body: JSON.stringify({ id })
       });
@@ -930,7 +930,7 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
     if (!window.confirm('Delete this organization permanently? Historical visits will keep the code, but will no longer be grouped under this organization.')) return;
     setActionId(id);
     try {
-      await api('/api/linktree/organization/delete', {
+      await api('/api/linktree/organization-delete', {
         method: 'POST',
         body: JSON.stringify({ id })
       });
@@ -945,13 +945,13 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
     if (!window.confirm('Delete this visit from the organization report?')) return;
     setDeletingVisitId(visitId);
     try {
-      await api('/api/linktree/visit/delete', {
+      const payload = await api('/api/linktree/visit-delete', {
         method: 'POST',
         body: JSON.stringify({ id: visitId })
       });
       await onSaved({
-        visits: visits.filter((visit) => visit.id !== visitId),
-        organizations: organizations.map((organization) =>
+        visits: payload.visits || visits.filter((visit) => visit.id !== visitId),
+        organizations: payload.organizations || organizations.map((organization) =>
           organization.id === selected?.id
             ? { ...organization, visit_count: Math.max(Number(organization.visit_count || 0) - 1, 0) }
             : organization
