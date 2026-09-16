@@ -39,6 +39,24 @@ const emptyOrganization = {
   notes: ''
 };
 
+const configuredPublicSiteUrl = (import.meta.env.VITE_PUBLIC_SITE_URL || '').replace(/\/+$/, '');
+
+function getPublicSiteUrl() {
+  return configuredPublicSiteUrl || window.location.origin;
+}
+
+function getOrganizationUrl(code) {
+  return `${getPublicSiteUrl()}/?variable=${encodeURIComponent(code)}`;
+}
+
+function getQrDownloadUrl(code) {
+  const params = new URLSearchParams({
+    code,
+    origin: getPublicSiteUrl()
+  });
+  return `/api/linktree/qr?${params.toString()}`;
+}
+
 function App() {
   const isAdmin = window.location.pathname.startsWith('/admin');
   return isAdmin ? <AdminApp /> : <PublicPage />;
@@ -751,11 +769,11 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
           <QrCode size={42} aria-hidden="true" />
           <div>
             <span>Organization link</span>
-            <code>{`${window.location.origin}/?variable=${selected.code}`}</code>
+            <code>{getOrganizationUrl(selected.code)}</code>
           </div>
           <a
             className="primary-button"
-            href={`/api/linktree/qr?code=${encodeURIComponent(selected.code)}&origin=${encodeURIComponent(window.location.origin)}`}
+            href={getQrDownloadUrl(selected.code)}
             download={`qr-${selected.code}.png`}
           >
             <Download size={18} aria-hidden="true" />
@@ -833,7 +851,7 @@ function OrganizationsEditor({ organizations, visits, onSaved }) {
           <article className="organization-card-row" key={organization.id}>
             <div className="organization-summary">
               <strong>{organization.name}</strong>
-              <code>{`?variable=${organization.code}`}</code>
+              <code>{getOrganizationUrl(organization.code)}</code>
             </div>
             <div className="organization-metric">
               <b>{organization.visit_count}</b>
